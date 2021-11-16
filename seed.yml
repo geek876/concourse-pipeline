@@ -1,0 +1,52 @@
+######################################################################################################################################################
+
+resources:
+
+- name: concourse-pipeline
+  type: git
+  icon: git
+  source:
+    branch: master
+    uri: https://github.com/geek876/concourse-pipeline.git
+
+- name: helm-deployment
+  type: git
+  icon: git
+  source:
+    branch: master
+    url: https://github.com/geek876/helm-deployment.git
+
+######################################################################################################################################################
+
+jobs:
+
+- name: seed-pipeline
+  plan:
+  - get: concourse-pipeline
+    trigger: true
+  - set_pipeline: self
+    file: concourse-pipeline/seed.yml
+    var_files:
+    - concourse-pipeline/params.yml
+
+- name: set-deploy-pipelines
+  plan:
+  - in_parallel:
+    - get: helm-deployment
+      trigger: true
+    - get: concourse-pipeline
+      trigger: true
+  - load_var: services
+    file: helm-deployment/deploy.json
+  - across:
+    - var: service
+      values: ((.:services))
+    set_pipeline: deploy-helm-components
+    var-files:
+    - concourse-pipeline/params.yml
+    - helm-deployment/((.:service.secrets-file))
+    file: concourse-pipeline/infra/helm-deploy-components.yml
+    instance_vars: {service: ((.:service.name))}
+    vars: {chart: ((.:service.chart)), value-file: ((.:service.value-file)), env: "dev", namespace: ((.:service.namespace)), chart-version: ((.:service.chart-version))}
+
+######################################################################################################################################################
